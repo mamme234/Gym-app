@@ -1,108 +1,387 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AI Gym Trainer – Web</title>
-  <!-- Load MediaPipe from CDN -->
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>💪 AI Gym Trainer Pro</title>
+  <!-- MediaPipe Libraries -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
   <style>
-    * { box-sizing: border-box; font-family: system-ui, sans-serif; }
-    body { margin: 0; background: #0b0e14; color: #eee; display: flex; justify-content: center; padding: 20px; }
-    .container { max-width: 800px; width: 100%; }
-    h1, h2 { text-align: center; margin: 10px 0; }
-    .schedule { background: #1e2530; padding: 16px; border-radius: 16px; margin-bottom: 20px; }
-    .schedule ul { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; }
-    .schedule li { padding: 4px 0; border-bottom: 1px solid #2a3340; }
-    .schedule li.today { color: #ffb347; font-weight: bold; }
-    .camera-wrapper { position: relative; background: #000; border-radius: 16px; overflow: hidden; }
-    video, canvas { position: absolute; top: 0; left: 0; width: 100%; height: auto; display: block; }
-    video { position: relative; } /* fallback */
-    #video { display: block; width: 100%; background: #222; }
-    #canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
-    .controls { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin: 15px 0; }
-    .controls button { background: #2a3340; color: #eee; border: none; padding: 10px 18px; border-radius: 30px; font-size: 0.9rem; cursor: pointer; transition: 0.2s; }
-    .controls button.active { background: #ffb347; color: #0b0e14; font-weight: bold; }
-    .controls button:hover { background: #3d4a5a; }
-    .feedback-box { background: #1e2530; padding: 16px; border-radius: 16px; margin-top: 16px; text-align: center; }
-    .feedback-text { font-size: 1.6rem; font-weight: bold; margin: 0; }
-    .feedback-angle { font-size: 1rem; color: #aaa; }
-    .status-good { color: #4caf50; }
-    .status-bad { color: #f44336; }
-    .status-waiting { color: #ff9800; }
-    .note { text-align: center; color: #888; font-size: 0.8rem; margin-top: 10px; }
+    /* ----- Reset & Base ----- */
+    * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; }
+    body { 
+      background: #0b0e14; 
+      color: #eef2f6; 
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      padding: 20px 12px 40px;
+    }
+    .app {
+      max-width: 880px;
+      width: 100%;
+    }
+
+    /* ----- Header ----- */
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 18px;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .logo h1 {
+      font-size: 1.7rem;
+      font-weight: 700;
+      background: linear-gradient(135deg, #f9b042, #ff6b6b);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      letter-spacing: -0.5px;
+    }
+    .logo span {
+      font-size: 2rem;
+    }
+    .day-badge {
+      background: #1e2530;
+      padding: 6px 16px;
+      border-radius: 40px;
+      font-size: 0.9rem;
+      font-weight: 500;
+      border: 1px solid #2f3a4a;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+    .day-badge i { color: #f9b042; margin-right: 6px; }
+
+    /* ----- Schedule Card ----- */
+    .schedule-card {
+      background: #151c26;
+      border-radius: 24px;
+      padding: 18px 20px 14px;
+      margin-bottom: 22px;
+      border: 1px solid #242e3b;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.5);
+    }
+    .schedule-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+      gap: 6px 12px;
+      margin-top: 10px;
+    }
+    .schedule-item {
+      display: flex;
+      justify-content: space-between;
+      padding: 6px 4px;
+      border-bottom: 1px solid #1f2937;
+      font-size: 0.9rem;
+    }
+    .schedule-item.today {
+      background: #2a3748;
+      border-radius: 8px;
+      padding: 6px 10px;
+      border-left: 4px solid #f9b042;
+    }
+    .schedule-item .day { font-weight: 500; color: #b0c4de; }
+    .schedule-item .workout { color: #cbd5e1; }
+    .schedule-item.today .day { color: #f9b042; }
+    .schedule-item.today .workout { color: #f0f4fa; }
+
+    /* ----- Camera & Canvas ----- */
+    .camera-wrapper {
+      position: relative;
+      background: #0a0d12;
+      border-radius: 28px;
+      overflow: hidden;
+      border: 1px solid #2a3442;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.7);
+      aspect-ratio: 4 / 3;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #video, #canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    #video { position: relative; z-index: 1; }
+    #canvas { z-index: 2; pointer-events: none; }
+
+    /* Overlay status (top-left) */
+    .cam-status {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      z-index: 5;
+      background: rgba(0,0,0,0.7);
+      backdrop-filter: blur(8px);
+      padding: 8px 18px;
+      border-radius: 40px;
+      font-size: 0.8rem;
+      font-weight: 500;
+      border: 1px solid #3a4557;
+      pointer-events: none;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .cam-status .dot {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #4caf50;
+      animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse { 0% { opacity: 0.5; } 50% { opacity: 1; } 100% { opacity: 0.5; } }
+
+    /* Camera toggle button */
+    .cam-toggle {
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
+      background: rgba(0,0,0,0.7);
+      backdrop-filter: blur(8px);
+      border: 1px solid #3a4557;
+      color: #eef2f6;
+      padding: 10px 24px;
+      border-radius: 60px;
+      font-size: 0.9rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      pointer-events: auto;
+    }
+    .cam-toggle:hover { background: #1e2530; border-color: #f9b042; }
+    .cam-toggle .icon { font-size: 1.2rem; }
+
+    /* ----- Exercise Selector ----- */
+    .exercise-selector {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: center;
+      margin: 18px 0 14px;
+    }
+    .ex-btn {
+      background: #1a232e;
+      border: 1px solid #2d3848;
+      color: #b8c7e0;
+      padding: 10px 18px;
+      border-radius: 60px;
+      font-size: 0.85rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    }
+    .ex-btn:hover { background: #26303f; border-color: #4a5a72; color: #fff; }
+    .ex-btn.active {
+      background: #f9b042;
+      border-color: #f9b042;
+      color: #0b0e14;
+      font-weight: 600;
+      box-shadow: 0 0 20px rgba(249, 176, 66, 0.3);
+    }
+    .ex-btn .icon { font-size: 1.2rem; line-height: 1; }
+
+    /* ----- Feedback Panel ----- */
+    .feedback-panel {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: 16px;
+      background: #151c26;
+      border-radius: 20px;
+      padding: 16px 22px;
+      margin-top: 16px;
+      border: 1px solid #242e3b;
+      box-shadow: 0 6px 24px rgba(0,0,0,0.4);
+    }
+    .feedback-main {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .feedback-text {
+      font-size: 1.6rem;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+      line-height: 1.2;
+    }
+    .feedback-text.good { color: #66d9a0; }
+    .feedback-text.bad { color: #ff7a7a; }
+    .feedback-text.waiting { color: #f9b042; }
+    .feedback-angle {
+      font-size: 0.95rem;
+      color: #8899b0;
+      font-weight: 400;
+    }
+    .feedback-badge {
+      background: #1e293b;
+      padding: 6px 18px;
+      border-radius: 40px;
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: #b8c7e0;
+      border: 1px solid #324157;
+      white-space: nowrap;
+    }
+    .feedback-badge i { margin-right: 6px; }
+
+    /* record indicator */
+    .rec-indicator {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      z-index: 5;
+      background: rgba(0,0,0,0.7);
+      backdrop-filter: blur(8px);
+      padding: 6px 16px 6px 12px;
+      border-radius: 40px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      border: 1px solid #ff4d4d;
+      pointer-events: none;
+    }
+    .rec-indicator .red-dot {
+      width: 12px;
+      height: 12px;
+      background: #ff2a2a;
+      border-radius: 50%;
+      animation: pulse 1s infinite;
+    }
+
+    /* ----- Responsive ----- */
     @media (max-width: 600px) {
-      .schedule ul { grid-template-columns: 1fr; }
-      .controls button { padding: 8px 12px; font-size: 0.8rem; }
+      .header { flex-direction: column; align-items: flex-start; }
+      .logo h1 { font-size: 1.4rem; }
+      .schedule-grid { grid-template-columns: 1fr; }
+      .feedback-panel { grid-template-columns: 1fr; text-align: center; }
+      .feedback-text { font-size: 1.3rem; }
+      .ex-btn { padding: 8px 14px; font-size: 0.75rem; }
+      .cam-toggle { padding: 8px 18px; font-size: 0.8rem; bottom: 12px; }
     }
   </style>
 </head>
 <body>
-<div class="container">
-  <h1>💪 AI Gym Trainer</h1>
+<div class="app">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="logo">
+      <span>🏋️</span>
+      <h1>AI Gym Trainer</h1>
+    </div>
+    <div class="day-badge" id="dayBadge">📅 <span id="dayName">Monday</span></div>
+  </div>
 
   <!-- Schedule -->
-  <div class="schedule">
-    <h2 style="margin-top:0;">📅 Weekly Schedule</h2>
-    <ul id="scheduleList"></ul>
+  <div class="schedule-card">
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap;">
+      <span style="font-weight:600; color:#b0c4de;">📋 Weekly Plan</span>
+      <span style="font-size:0.75rem; color:#6a7f99;">tap exercise to start</span>
+    </div>
+    <div class="schedule-grid" id="scheduleGrid"></div>
   </div>
 
   <!-- Camera -->
-  <div class="camera-wrapper">
-    <video id="video" autoplay playsinline></video>
+  <div class="camera-wrapper" id="cameraWrapper">
+    <video id="video" playsinline></video>
     <canvas id="canvas"></canvas>
+    <div class="cam-status"><span class="dot"></span> LIVE</div>
+    <button class="cam-toggle" id="cameraToggle">
+      <span class="icon">📷</span> <span id="camLabel">Switch to Front</span>
+    </button>
+    <div class="rec-indicator" id="recIndicator" style="display:none;"><span class="red-dot"></span> REC</div>
   </div>
 
   <!-- Exercise Buttons -->
-  <div class="controls" id="exerciseButtons">
-    <button data-ex="1" class="active">Push-up</button>
-    <button data-ex="2">Squat</button>
-    <button data-ex="3">Bicep Curl</button>
-    <button data-ex="4">Shoulder Press</button>
-    <button data-ex="5">Plank</button>
-    <button data-ex="6">Lunge</button>
-    <button data-ex="7">Crunch</button>
-    <button data-ex="8">Row</button>
+  <div class="exercise-selector" id="exerciseSelector">
+    <button class="ex-btn active" data-ex="1"><span class="icon">💪</span> Push-up</button>
+    <button class="ex-btn" data-ex="2"><span class="icon">🦵</span> Squat</button>
+    <button class="ex-btn" data-ex="3"><span class="icon">💪</span> Bicep Curl</button>
+    <button class="ex-btn" data-ex="4"><span class="icon">🏋️</span> Shoulder Press</button>
+    <button class="ex-btn" data-ex="5"><span class="icon">🧘</span> Plank</button>
+    <button class="ex-btn" data-ex="6"><span class="icon">🚶</span> Lunge</button>
+    <button class="ex-btn" data-ex="7"><span class="icon">🔥</span> Crunch</button>
+    <button class="ex-btn" data-ex="8"><span class="icon">🔙</span> Row</button>
   </div>
 
-  <!-- Feedback -->
-  <div class="feedback-box">
-    <div class="feedback-text" id="feedbackMsg">🙋 Waiting for pose...</div>
-    <div class="feedback-angle" id="feedbackAngle">Angle: —</div>
+  <!-- Feedback Panel -->
+  <div class="feedback-panel">
+    <div class="feedback-main">
+      <div class="feedback-text waiting" id="feedbackMsg">🙋‍♂️ Waiting for pose...</div>
+      <div class="feedback-angle" id="feedbackAngle">Angle: —</div>
+    </div>
+    <div class="feedback-badge" id="exerciseBadge"><i>🎯</i> Push-up</div>
   </div>
-  <div class="note">⚡ All processing is done locally in your browser. No data is sent anywhere.</div>
+
+  <div style="text-align:center; margin-top:18px; font-size:0.7rem; color:#4a5a72;">
+    ⚡ All processing is local — no data leaves your device
+  </div>
 </div>
 
 <script>
-  // ---------- SCHEDULE ----------
-  const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  // -------------------------------------------------------------
+  // 1. SCHEDULE
+  // -------------------------------------------------------------
+  const days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
   const workouts = {
-    'Monday': 'Chest / Triceps / Shoulders',
-    'Tuesday': 'Back / Biceps / Rear Delts',
-    'Wednesday': 'Legs / Glutes / Calves',
-    'Thursday': 'Chest / Triceps / Shoulders',
-    'Friday': 'Back / Biceps / Rear Delts',
-    'Saturday': 'Core (Abs) + Cardio',
+    'Monday': 'Chest / Triceps',
+    'Tuesday': 'Back / Biceps',
+    'Wednesday': 'Legs / Shoulders',
+    'Thursday': 'Chest / Triceps',
+    'Friday': 'Back / Biceps',
+    'Saturday': 'Core / Cardio',
     'Sunday': 'Rest / Mobility'
   };
   const today = new Date().toLocaleDateString('en-US', { weekday: 'long' });
-  const list = document.getElementById('scheduleList');
-  for (const d of days) {
-    const li = document.createElement('li');
-    li.textContent = `${d}: ${workouts[d]}`;
-    if (d === today) li.classList.add('today');
-    list.appendChild(li);
-  }
+  document.getElementById('dayName').textContent = today;
 
-  // ---------- MEDIAPIPE SETUP ----------
+  const grid = document.getElementById('scheduleGrid');
+  days.forEach(d => {
+    const div = document.createElement('div');
+    div.className = 'schedule-item' + (d === today ? ' today' : '');
+    div.innerHTML = `<span class="day">${d}</span><span class="workout">${workouts[d]}</span>`;
+    grid.appendChild(div);
+  });
+
+  // -------------------------------------------------------------
+  // 2. MEDIAPIPE SETUP
+  // -------------------------------------------------------------
   const video = document.getElementById('video');
   const canvas = document.getElementById('canvas');
   const ctx = canvas.getContext('2d');
 
   let poseResults = null;
-  let exerciseMode = 'PUSHUP'; // default
+  let exerciseMode = 'PUSHUP';
+  let isRecording = false;
+  let currentFacingMode = 'environment'; // 'environment' = back, 'user' = front
+  let cameraInstance = null;
 
   function onResults(results) {
     poseResults = results;
@@ -114,237 +393,245 @@
     canvas.height = video.videoHeight || 480;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    if (!results.poseLandmarks) return;
+    if (!results.poseLandmarks) {
+      document.getElementById('feedbackMsg').textContent = '🙋‍♂️ No pose detected';
+      document.getElementById('feedbackMsg').className = 'feedback-text waiting';
+      return;
+    }
 
-    // Draw landmarks
-    drawConnectors(ctx, results.poseLandmarks, POSE_CONNECTIONS, { color: '#00FF00', lineWidth: 2 });
-    drawLandmarks(ctx, results.poseLandmarks, { color: '#FF0000', lineWidth: 2, radius: 4 });
+    // Draw skeleton
+    drawConnectors(ctx, results.poseLandmarks, POSE_CONNECTIONS, { color: '#66d9a0', lineWidth: 2 });
+    drawLandmarks(ctx, results.poseLandmarks, { color: '#ff6b6b', lineWidth: 2, radius: 4 });
 
-    // Run exercise logic
+    // Evaluate
     const lm = results.poseLandmarks;
-    const w = canvas.width;
-    const h = canvas.height;
-    const feedback = evaluateExercise(lm, w, h, exerciseMode);
-    document.getElementById('feedbackMsg').textContent = feedback.msg;
-    document.getElementById('feedbackAngle').textContent = feedback.angleText;
-
-    // Color the feedback
-    const el = document.getElementById('feedbackMsg');
-    el.className = 'feedback-text';
-    if (feedback.correct) el.classList.add('status-good');
-    else if (feedback.msg.includes('Waiting')) el.classList.add('status-waiting');
-    else el.classList.add('status-bad');
+    const w = canvas.width, h = canvas.height;
+    const fb = evaluateExercise(lm, w, h, exerciseMode);
+    document.getElementById('feedbackMsg').textContent = fb.msg;
+    document.getElementById('feedbackAngle').textContent = fb.angleText;
+    document.getElementById('feedbackMsg').className = 'feedback-text ' + fb.status;
+    // update badge
+    const exNames = { 'PUSHUP':'Push-up','SQUAT':'Squat','BICEP_CURL':'Bicep Curl',
+                      'SHOULDER_PRESS':'Shoulder Press','PLANK':'Plank','LUNGE':'Lunge',
+                      'CRUNCH':'Crunch','ROW':'Row' };
+    document.getElementById('exerciseBadge').innerHTML = `<i>🎯</i> ${exNames[exerciseMode] || 'Exercise'}`;
   }
 
-  // ---------- ANGLE HELPER ----------
+  // -------------------------------------------------------------
+  // 3. ANGLE & EVALUATION
+  // -------------------------------------------------------------
   function calcAngle(a, b, c) {
-    const rad = Math.atan2(c[1] - b[1], c[0] - b[0]) - Math.atan2(a[1] - b[1], a[0] - b[0]);
+    const rad = Math.atan2(c[1]-b[1], c[0]-b[0]) - Math.atan2(a[1]-b[1], a[0]-b[0]);
     let angle = Math.abs(rad * 180 / Math.PI);
     if (angle > 180) angle = 360 - angle;
     return angle;
   }
+  function getPt(lm, idx) { return [lm[idx].x, lm[idx].y]; }
 
-  function getPt(lm, idx) {
-    return [lm[idx].x, lm[idx].y];
-  }
-
-  // ---------- EXERCISE EVALUATOR ----------
   function evaluateExercise(lm, w, h, mode) {
-    // Use normalized coordinates (0-1) for angles – scaling not needed for angles.
-    const ls = getPt(lm, 11); // left shoulder
-    const le = getPt(lm, 13); // left elbow
-    const lw = getPt(lm, 15); // left wrist
-    const rs = getPt(lm, 12); // right shoulder
-    const re = getPt(lm, 14); // right elbow
-    const rw = getPt(lm, 16); // right wrist
-    const lh = getPt(lm, 23); // left hip
-    const lk = getPt(lm, 25); // left knee
-    const la = getPt(lm, 27); // left ankle
-    const rh = getPt(lm, 24); // right hip
-    const rk = getPt(lm, 26); // right knee
-    const ra = getPt(lm, 28); // right ankle
+    const ls = getPt(lm,11), le = getPt(lm,13), lw = getPt(lm,15);
+    const rs = getPt(lm,12), re = getPt(lm,14), rw = getPt(lm,16);
+    const lh = getPt(lm,23), lk = getPt(lm,25), la = getPt(lm,27);
+    const rh = getPt(lm,24), rk = getPt(lm,26), ra = getPt(lm,28);
 
-    let angle = 0;
-    let msg = '✅ Perfect!';
-    let correct = true;
+    let angle = 0, msg = '✅ Perfect!', status = 'good';
 
     switch (mode) {
       case 'PUSHUP': {
-        const l_ang = calcAngle(ls, le, lw);
-        const r_ang = calcAngle(rs, re, rw);
-        angle = (l_ang + r_ang) / 2;
-        if (angle > 150) { msg = '⬇️ Go lower!'; correct = false; }
-        else if (angle < 70) { msg = '⬆️ Push up!'; correct = false; }
-        else { msg = '✅ Perfect!'; correct = true; }
+        const a = (calcAngle(ls,le,lw) + calcAngle(rs,re,rw))/2;
+        angle = a;
+        if (a > 150) { msg = '⬇️ Go lower!'; status = 'bad'; }
+        else if (a < 70) { msg = '⬆️ Push up!'; status = 'bad'; }
+        else { msg = '✅ Perfect!'; status = 'good'; }
         break;
       }
       case 'SQUAT': {
-        const l_ang = calcAngle(lh, lk, la);
-        const r_ang = calcAngle(rh, rk, ra);
-        angle = (l_ang + r_ang) / 2;
-        // Optional hip check (chest up)
-        const l_hip = calcAngle(ls, lh, lk);
-        const r_hip = calcAngle(rs, rh, rk);
-        const avgHip = (l_hip + r_hip) / 2;
-        if (angle > 160) { msg = '⬇️ Go deeper!'; correct = false; }
-        else if (angle < 85) {
-          if (avgHip < 80) { msg = '🧑‍🦯 Chest up!'; correct = false; }
-          else { msg = '⬆️ Rise up!'; correct = false; }
+        const a = (calcAngle(lh,lk,la) + calcAngle(rh,rk,ra))/2;
+        const hip = (calcAngle(ls,lh,lk) + calcAngle(rs,rh,rk))/2;
+        angle = a;
+        if (a > 160) { msg = '⬇️ Deeper!'; status = 'bad'; }
+        else if (a < 85) {
+          if (hip < 80) { msg = '🧑‍🦯 Chest up!'; status = 'bad'; }
+          else { msg = '⬆️ Rise up!'; status = 'bad'; }
         } else {
-          if (avgHip < 80) { msg = '🧑‍🦯 Chest up!'; correct = false; }
-          else { msg = '✅ Good squat!'; correct = true; }
+          if (hip < 80) { msg = '🧑‍🦯 Chest up!'; status = 'bad'; }
+          else { msg = '✅ Good squat!'; status = 'good'; }
         }
         break;
       }
       case 'BICEP_CURL': {
-        const l_ang = calcAngle(ls, le, lw);
-        const r_ang = calcAngle(rs, re, rw);
-        angle = (l_ang + r_ang) / 2;
-        if (angle > 160) { msg = '💪 Curl up!'; correct = false; }
-        else if (angle < 60) { msg = '⬇️ Lower slowly!'; correct = false; }
-        else { msg = '✅ Good curl!'; correct = true; }
+        const a = (calcAngle(ls,le,lw) + calcAngle(rs,re,rw))/2;
+        angle = a;
+        if (a > 160) { msg = '💪 Curl up!'; status = 'bad'; }
+        else if (a < 60) { msg = '⬇️ Lower slowly!'; status = 'bad'; }
+        else { msg = '✅ Good curl!'; status = 'good'; }
         break;
       }
       case 'SHOULDER_PRESS': {
-        const l_ang = calcAngle(ls, le, lw);
-        const r_ang = calcAngle(rs, re, rw);
-        angle = (l_ang + r_ang) / 2;
-        if (angle < 80) { msg = '⬆️ Press up!'; correct = false; }
-        else if (angle > 160) { msg = '⬇️ Lower down!'; correct = false; }
-        else { msg = '✅ Good press!'; correct = true; }
+        const a = (calcAngle(ls,le,lw) + calcAngle(rs,re,rw))/2;
+        angle = a;
+        if (a < 80) { msg = '⬆️ Press up!'; status = 'bad'; }
+        else if (a > 160) { msg = '⬇️ Lower down!'; status = 'bad'; }
+        else { msg = '✅ Good press!'; status = 'good'; }
         break;
       }
       case 'PLANK': {
-        const hipY = (lm[23].y + lm[24].y) / 2;
-        const shoulderY = (lm[11].y + lm[12].y) / 2;
-        const diff = hipY - shoulderY;
-        angle = diff * 100; // just for display
-        if (diff > 0.15) { msg = '⬆️ Lift hips up!'; correct = false; }
-        else if (diff < -0.15) { msg = '⬇️ Lower hips down!'; correct = false; }
-        else { msg = '✅ Solid plank!'; correct = true; }
+        const hipY = (lm[23].y + lm[24].y)/2;
+        const shY = (lm[11].y + lm[12].y)/2;
+        const diff = hipY - shY;
+        angle = diff * 100;
+        if (diff > 0.15) { msg = '⬆️ Lift hips!'; status = 'bad'; }
+        else if (diff < -0.15) { msg = '⬇️ Lower hips!'; status = 'bad'; }
+        else { msg = '✅ Solid plank!'; status = 'good'; }
         break;
       }
       case 'LUNGE': {
-        const l_ang = calcAngle(lh, lk, la);
-        const r_ang = calcAngle(rh, rk, ra);
-        angle = (l_ang + r_ang) / 2;
-        if (angle > 150) { msg = '⬇️ Go deeper!'; correct = false; }
-        else if (angle < 70) { msg = '⬆️ Rise up!'; correct = false; }
-        else { msg = '✅ Good lunge!'; correct = true; }
+        const a = (calcAngle(lh,lk,la) + calcAngle(rh,rk,ra))/2;
+        angle = a;
+        if (a > 150) { msg = '⬇️ Deeper!'; status = 'bad'; }
+        else if (a < 70) { msg = '⬆️ Rise up!'; status = 'bad'; }
+        else { msg = '✅ Good lunge!'; status = 'good'; }
         break;
       }
       case 'CRUNCH': {
-        const l_ang = calcAngle(ls, lh, lk);
-        const r_ang = calcAngle(rs, rh, rk);
-        angle = (l_ang + r_ang) / 2;
-        if (angle > 120) { msg = '⬆️ Curl up!'; correct = false; }
-        else if (angle < 70) { msg = '⬇️ Lower down!'; correct = false; }
-        else { msg = '✅ Good crunch!'; correct = true; }
+        const a = (calcAngle(ls,lh,lk) + calcAngle(rs,rh,rk))/2;
+        angle = a;
+        if (a > 120) { msg = '⬆️ Curl up!'; status = 'bad'; }
+        else if (a < 70) { msg = '⬇️ Lower down!'; status = 'bad'; }
+        else { msg = '✅ Good crunch!'; status = 'good'; }
         break;
       }
       case 'ROW': {
-        const l_ang = calcAngle(ls, le, lw);
-        const r_ang = calcAngle(rs, re, rw);
-        angle = (l_ang + r_ang) / 2;
-        // Shoulder retraction check: wrist behind shoulder
-        const l_retr = (lw[0] - ls[0]) < -0.05;
-        const r_retr = (rw[0] - rs[0]) > 0.05;
-        if (angle > 160) { msg = '⬇️ Pull elbow back!'; correct = false; }
-        else if (angle < 60) {
-          if (!(l_retr && r_retr)) { msg = '🔙 Retract shoulders!'; correct = false; }
-          else { msg = '⬇️ Lower with control!'; correct = false; }
+        const a = (calcAngle(ls,le,lw) + calcAngle(rs,re,rw))/2;
+        const lRetr = (lw[0] - ls[0]) < -0.05;
+        const rRetr = (rw[0] - rs[0]) > 0.05;
+        angle = a;
+        if (a > 160) { msg = '⬇️ Pull elbow!'; status = 'bad'; }
+        else if (a < 60) {
+          if (!(lRetr && rRetr)) { msg = '🔙 Retract!'; status = 'bad'; }
+          else { msg = '⬇️ Lower control!'; status = 'bad'; }
         } else {
-          if (!(l_retr && r_retr)) { msg = '🔙 Retract shoulders!'; correct = false; }
-          else { msg = '✅ Good row!'; correct = true; }
+          if (!(lRetr && rRetr)) { msg = '🔙 Retract!'; status = 'bad'; }
+          else { msg = '✅ Good row!'; status = 'good'; }
         }
         break;
       }
-      default: {
-        msg = 'Select an exercise';
-        correct = false;
-        angle = 0;
-      }
+      default: { msg = 'Select exercise'; status = 'waiting'; }
     }
-    return { msg, correct, angleText: `Angle: ${Math.round(angle)}°` };
+    return { msg, status, angleText: `Angle: ${Math.round(angle)}°` };
   }
 
-  // ---------- EXERCISE SELECTION ----------
-  const modeMap = {
-    '1': 'PUSHUP',
-    '2': 'SQUAT',
-    '3': 'BICEP_CURL',
-    '4': 'SHOULDER_PRESS',
-    '5': 'PLANK',
-    '6': 'LUNGE',
-    '7': 'CRUNCH',
-    '8': 'ROW'
-  };
+  // -------------------------------------------------------------
+  // 4. CAMERA – BACK by default with toggle
+  // -------------------------------------------------------------
+  async function startCamera(facingMode = 'environment') {
+    // Stop any existing stream
+    if (video.srcObject) {
+      video.srcObject.getTracks().forEach(t => t.stop());
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: facingMode, width: { ideal: 640 }, height: { ideal: 480 } }
+      });
+      video.srcObject = stream;
+      await video.play();
+      // Update label
+      const label = document.getElementById('camLabel');
+      label.textContent = facingMode === 'environment' ? 'Switch to Front' : 'Switch to Back';
+      currentFacingMode = facingMode;
+      // Re-init pose after camera is ready
+      if (typeof pose !== 'undefined') {
+        // pose is already initialized, just need to send frames
+      }
+    } catch (err) {
+      console.warn('Camera error:', err);
+      document.getElementById('feedbackMsg').textContent = '❌ Camera unavailable';
+      document.getElementById('feedbackMsg').className = 'feedback-text bad';
+    }
+  }
 
-  document.querySelectorAll('#exerciseButtons button').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('#exerciseButtons button').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      exerciseMode = modeMap[btn.dataset.ex] || 'PUSHUP';
-      // reset feedback
-      document.getElementById('feedbackMsg').textContent = `🔄 Switched to ${btn.textContent}`;
+  // Camera toggle
+  document.getElementById('cameraToggle').addEventListener('click', () => {
+    const nextMode = currentFacingMode === 'environment' ? 'user' : 'environment';
+    startCamera(nextMode);
+  });
+
+  // -------------------------------------------------------------
+  // 5. EXERCISE SELECTION
+  // -------------------------------------------------------------
+  const modeMap = {
+    '1':'PUSHUP','2':'SQUAT','3':'BICEP_CURL','4':'SHOULDER_PRESS',
+    '5':'PLANK','6':'LUNGE','7':'CRUNCH','8':'ROW'
+  };
+  document.querySelectorAll('.ex-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+      document.querySelectorAll('.ex-btn').forEach(b => b.classList.remove('active'));
+      this.classList.add('active');
+      exerciseMode = modeMap[this.dataset.ex] || 'PUSHUP';
+      document.getElementById('feedbackMsg').textContent = `🔄 ${this.textContent.trim()}`;
+      document.getElementById('feedbackMsg').className = 'feedback-text waiting';
       document.getElementById('feedbackAngle').textContent = 'Angle: —';
     });
   });
 
-  // ---------- MEDIAPIPE POSE ----------
+  // -------------------------------------------------------------
+  // 6. MEDIAPIPE POSE
+  // -------------------------------------------------------------
+  let pose = null;
+
   function initializePose() {
-    const pose = new Pose({
+    pose = new Pose({
       locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
     });
     pose.setOptions({
       modelComplexity: 1,
       smoothLandmarks: true,
-      enableSegmentation: false,
-      smoothSegmentation: false,
       minDetectionConfidence: 0.6,
       minTrackingConfidence: 0.5
     });
     pose.onResults(onResults);
-
-    const camera = new Camera(video, {
-      onFrame: async () => {
-        await pose.send({ image: video });
-      },
-      width: 640,
-      height: 480
-    });
-    camera.start();
   }
 
-  // Polyfill for drawConnectors / drawLandmarks from MediaPipe (if not defined)
-  // They are globally available from the CDN, but we'll define them just in case.
-  if (typeof drawConnectors === 'undefined') {
-    window.drawConnectors = function(ctx, landmarks, connections, style) {
-      // Simple fallback
-    };
-    window.drawLandmarks = function(ctx, landmarks, style) {
-      // Simple fallback
-    };
+  // Camera loop: send frames to MediaPipe
+  async function sendFrame() {
+    if (!pose || !video.videoWidth) return;
+    try {
+      await pose.send({ image: video });
+    } catch (e) { /* ignore */ }
+    requestAnimationFrame(sendFrame);
   }
 
-  // We need to import the POSE_CONNECTIONS from the library.
-  // It's usually available globally.
+  // -------------------------------------------------------------
+  // 7. START
+  // -------------------------------------------------------------
+  // POSE_CONNECTIONS (MediaPipe skeleton)
   const POSE_CONNECTIONS = [
     [11,12],[11,13],[13,15],[12,14],[14,16],
     [11,23],[12,24],[23,24],[23,25],[24,26],
     [25,27],[26,28],[27,29],[28,30],[29,31],[30,32],
-    [11,23],[12,24],[23,25],[24,26],
-    [13,15],[14,16],
-    [15,17],[16,18],[17,19],[18,20],[19,21],[20,22],
+    [13,15],[14,16],[15,17],[16,18],[17,19],[18,20],[19,21],[20,22],
     [15,19],[16,20],[17,21],[18,22]
   ];
 
-  // ---------- START ----------
-  if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+  if (navigator.mediaDevices?.getUserMedia) {
     initializePose();
+    // Start with BACK camera
+    startCamera('environment').then(() => {
+      // Begin frame loop after camera is ready
+      setTimeout(() => sendFrame(), 500);
+    });
   } else {
     document.getElementById('feedbackMsg').textContent = '❌ Camera not available';
+    document.getElementById('feedbackMsg').className = 'feedback-text bad';
   }
+
+  // Recording toggle (press 'r')
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'r' || e.key === 'R') {
+      isRecording = !isRecording;
+      document.getElementById('recIndicator').style.display = isRecording ? 'flex' : 'none';
+    }
+  });
 </script>
 </body>
-  </html>
+    </html>
