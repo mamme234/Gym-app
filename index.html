@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Gym Trainer – Web</title>
+  <!-- Load MediaPipe from CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+  <style>
+    * { box-sizing: border-box; font-family: system-ui, sans-serif; }
+    body { margin: 0; background: #0b0e14; color: #eee; display: flex; justify-content: center; padding: 20px; }
+    .container { max-width: 800px; width: 100%; }
+    h1, h2 { text-align: center; margin: 10px 0; }
+    .schedule { background: #1e2530; padding: 16px; border-radius: 16px; margin-bottom: 20px; }
+    .schedule ul { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; }
+    .schedule li { padding: 4px 0; border-bottom: 1px solid #2a3340; }
+    .schedule li.today { color: #ffb347; font-weight: bold; }
+    .camera-wrapper { position: relative; background: #000; border-radius: 16px; overflow: hidden; }
+    video, canvas { position: absolute; top: 0; left: 0; width: 100%; height: auto; display: block; }
+    video { position: relative; } /* fallback */
+    #video { display: block; width: 100%; background: #222; }
+    #canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+    .controls { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin: 15px 0; }
+    .controls button { background: #2a3340; color: #eee; border: none; padding: 10px 18px; border-radius: 30px; font-size: 0.9rem; cursor: pointer; transition: 0.2s; }
+    .controls button.active { background: #ffb347; color: #0b0e14; font-weight: bold; }
+    .controls button:hover { background: #3d4a5a; }
+    .feedback-box { background: #1e2530; padding: 16px; border-radius: 16px; margin-top: 16px; text-align: center; }
+    .feedback-text { font-size: 1.6rem; font-weight: bold; margin: 0; }
+    .feedback-angle { font-size: 1rem; color: #aaa; }
+    .status-good { color: #4caf50; }
+    .status-bad { color: #f44336; }
+    .status-waiting { color: #ff9800; }
+    .note { text-align: center; color: #888; font-size: 0.8rem; margin-top: 10px; }
+    @media (max-width: 600px) {
+      .schedule ul { grid-template-columns: 1fr; }
+      .controls button { padding: 8px 12px; font-size: 0.8rem; }
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1>💪 AI Gym Trainer</h1>
+
+  <!-- Schedule -->
+  <div class="schedule">
+    <h2 style="margin-top:0;">📅 Weekly Schedule</h2>
+    <ul id="scheduleList"></ul>
+  </div>
+
+  <!-- Camera -->
+  <div class="camera-wrapper">
+    <video id="video" autoplay playsinline></video>
+    <canvas id="canvas"></canvas>
+  </div>
+
+  <!-- Exercise Buttons -->
+  <div class="controls" id="exerciseButtons">
+    <button data-ex="1" class="active">Push-up</button>
+    <button data-ex="2">Squat</button>
+    <button data-ex="3">Bicep Curl</button>
+    <button data-ex="4">Shoulder Press</button>
+    <button data-ex="5">Plank</button>
+    <button data-ex="6">Lunge</button>
+    <button data-ex="7">Crunch</button>
+    <button data-ex="8">Row</button>
+  </div>
+
+  <!-- Feedback -->
+  <div class="feedback-box">
+    <div class="feedback-text" id="feedbackMsg">🙋 Waiting for pose...</div>
+    <div class="feedback-angle" id="feedbackAngle">Angle: —</div>
+  </div>
+  <div class="note">⚡ All processing is done locally in your browser. No data is sent anywhere.</div>
+</div>
+
+<script>
+  // ---------- SCHEDULE ----------
+  const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  const workouts = {
+    'Monday': 'Chest / Triceps / Shoulders',
+    'Tuesday': 'Back / Biceps / Rear Delts',
+    'Wednesday': 'Legs / Glutes / Calves',
+    'Thursday': 'Chest / Triceps / Shoulders',
+    'Friday': 'Back / Biceps / Rear Delts',
+    'Saturday': 'Core (Abs) + Cardio',
+    'Sunday': 'Rest / Mobility'
+  };
+  const today = new Date().toLocaleDateString('en-US', { weekday: 'long' });
+  const list = document.getElementById('scheduleList');
+  for (const d of days) {
+    const li = document.createElement('li');
+    li.textContent = `${d}: ${workouts[d]}`;
+    if (d === today) li.classList.add('today');
+    list.appendChild(li);
+  }
+
+  // ---------- MEDIAPIPE SETUP ----------
+  const video = document.getElementById('video');
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+
+  let poseResults = null;
+  let exerciseMode = 'PUSHUP'; // default
+
+  function onResults(results) {
+    poseResults = results;
+    drawResults(results);
+  }
+
+  function drawResults(results) {
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 480;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (!results.poseLandmarks) return;
+
+    // Draw landmarks
+    drawConnectors(ctx, results.poseLandmarks, POSE_CONNECTIONS, { color: '#00FF00', lineWidth: 2 });
+    drawLandmarks(ctx, results.poseLandmarks, { color: '#FF0000', lineWidth: 2, radius: 4 });
+
+    // Run exercise logic
+    const lm = results.poseLandmarks;
+    const w = canvas.width;
+    const h = canvas.height;
+    const feedback = evaluateExercise(lm, w, h, exerciseMode);
+    document.getElementById('feedbackMsg').textContent = feedback.msg;
+    document.getElementById('feedbackAngle').textContent = feedback.angleText;
+
+    // Color the feedback
+    const el = document.getElementById('feedbackMsg');
+    el.className = 'feedback-text';
+    if (feedback.correct) el.classList.add('status-good');
+    else if (feedback.msg.includes('Waiting')) el.classList.add('status-waiting');
+    else el.classList.add('status-bad');
+  }
+
+  // ---------- ANGLE HELPER ----------
+  function calcAngle(a, b, c) {
+    const rad = Math.atan2(c[1] - b[1], c[0] - b[0]) - Math.atan2(a[1] - b[1], a[0] - b[0]);
+    let angle = Math.abs(rad * 180 / Math.PI);
+    if (angle > 180) angle = 360 - angle;
+    return angle;
+  }
+
+  function getPt(lm, idx) {
+    return [lm[idx].x, lm[idx].y];
+  }
+
+  // ---------- EXERCISE EVALUATOR ----------
+  function evaluateExercise(lm, w, h, mode) {
+    // Use normalized coordinates (0-1) for angles – scaling not needed for angles.
+    const ls = getPt(lm, 11); // left shoulder
+    const le = getPt(lm, 13); // left elbow
+    const lw = getPt(lm, 15); // left wrist
+    const rs = getPt(lm, 12); // right shoulder
+    const re = getPt(lm, 14); // right elbow
+    const rw = getPt(lm, 16); // right wrist
+    const lh = getPt(lm, 23); // left hip
+    const lk = getPt(lm, 25); // left knee
+    const la = getPt(lm, 27); // left ankle
+    const rh = getPt(lm, 24); // right hip
+    const rk = getPt(lm, 26); // right knee
+    const ra = getPt(lm, 28); // right ankle
+
+    let angle = 0;
+    let msg = '✅ Perfect!';
+    let correct = true;
+
+    switch (mode) {
+      case 'PUSHUP': {
+        const l_ang = calcAngle(ls, le, lw);
+        const r_ang = calcAngle(rs, re, rw);
+        angle = (l_ang + r_ang) / 2;
+        if (angle > 150) { msg = '⬇️ Go lower!'; correct = false; }
+        else if (angle < 70) { msg = '⬆️ Push up!'; correct = false; }
+        else { msg = '✅ Perfect!'; correct = true; }
+        break;
+      }
+      case 'SQUAT': {
+        const l_ang = calcAngle(lh, lk, la);
+        const r_ang = calcAngle(rh, rk, ra);
+        angle = (l_ang + r_ang) / 2;
+        // Optional hip check (chest up)
+        const l_hip = calcAngle(ls, lh, lk);
+        const r_hip = calcAngle(rs, rh, rk);
+        const avgHip = (l_hip + r_hip) / 2;
+        if (angle > 160) { msg = '⬇️ Go deeper!'; correct = false; }
+        else if (angle < 85) {
+          if (avgHip < 80) { msg = '🧑‍🦯 Chest up!'; correct = false; }
+          else { msg = '⬆️ Rise up!'; correct = false; }
+        } else {
+          if (avgHip < 80) { msg = '🧑‍🦯 Chest up!'; correct = false; }
+          else { msg = '✅ Good squat!'; correct = true; }
+        }
+        break;
+      }
+      case 'BICEP_CURL': {
+        const l_ang = calcAngle(ls, le, lw);
+        const r_ang = calcAngle(rs, re, rw);
+        angle = (l_ang + r_ang) / 2;
+        if (angle > 160) { msg = '💪 Curl up!'; correct = false; }
+        else if (angle < 60) { msg = '⬇️ Lower slowly!'; correct = false; }
+        else { msg = '✅ Good curl!'; correct = true; }
+        break;
+      }
+      case 'SHOULDER_PRESS': {
+        const l_ang = calcAngle(ls, le, lw);
+        const r_ang = calcAngle(rs, re, rw);
+        angle = (l_ang + r_ang) / 2;
+        if (angle < 80) { msg = '⬆️ Press up!'; correct = false; }
+        else if (angle > 160) { msg = '⬇️ Lower down!'; correct = false; }
+        else { msg = '✅ Good press!'; correct = true; }
+        break;
+      }
+      case 'PLANK': {
+        const hipY = (lm[23].y + lm[24].y) / 2;
+        const shoulderY = (lm[11].y + lm[12].y) / 2;
+        const diff = hipY - shoulderY;
+        angle = diff * 100; // just for display
+        if (diff > 0.15) { msg = '⬆️ Lift hips up!'; correct = false; }
+        else if (diff < -0.15) { msg = '⬇️ Lower hips down!'; correct = false; }
+        else { msg = '✅ Solid plank!'; correct = true; }
+        break;
+      }
+      case 'LUNGE': {
+        const l_ang = calcAngle(lh, lk, la);
+        const r_ang = calcAngle(rh, rk, ra);
+        angle = (l_ang + r_ang) / 2;
+        if (angle > 150) { msg = '⬇️ Go deeper!'; correct = false; }
+        else if (angle < 70) { msg = '⬆️ Rise up!'; correct = false; }
+        else { msg = '✅ Good lunge!'; correct = true; }
+        break;
+      }
+      case 'CRUNCH': {
+        const l_ang = calcAngle(ls, lh, lk);
+        const r_ang = calcAngle(rs, rh, rk);
+        angle = (l_ang + r_ang) / 2;
+        if (angle > 120) { msg = '⬆️ Curl up!'; correct = false; }
+        else if (angle < 70) { msg = '⬇️ Lower down!'; correct = false; }
+        else { msg = '✅ Good crunch!'; correct = true; }
+        break;
+      }
+      case 'ROW': {
+        const l_ang = calcAngle(ls, le, lw);
+        const r_ang = calcAngle(rs, re, rw);
+        angle = (l_ang + r_ang) / 2;
+        // Shoulder retraction check: wrist behind shoulder
+        const l_retr = (lw[0] - ls[0]) < -0.05;
+        const r_retr = (rw[0] - rs[0]) > 0.05;
+        if (angle > 160) { msg = '⬇️ Pull elbow back!'; correct = false; }
+        else if (angle < 60) {
+          if (!(l_retr && r_retr)) { msg = '🔙 Retract shoulders!'; correct = false; }
+          else { msg = '⬇️ Lower with control!'; correct = false; }
+        } else {
+          if (!(l_retr && r_retr)) { msg = '🔙 Retract shoulders!'; correct = false; }
+          else { msg = '✅ Good row!'; correct = true; }
+        }
+        break;
+      }
+      default: {
+        msg = 'Select an exercise';
+        correct = false;
+        angle = 0;
+      }
+    }
+    return { msg, correct, angleText: `Angle: ${Math.round(angle)}°` };
+  }
+
+  // ---------- EXERCISE SELECTION ----------
+  const modeMap = {
+    '1': 'PUSHUP',
+    '2': 'SQUAT',
+    '3': 'BICEP_CURL',
+    '4': 'SHOULDER_PRESS',
+    '5': 'PLANK',
+    '6': 'LUNGE',
+    '7': 'CRUNCH',
+    '8': 'ROW'
+  };
+
+  document.querySelectorAll('#exerciseButtons button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#exerciseButtons button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      exerciseMode = modeMap[btn.dataset.ex] || 'PUSHUP';
+      // reset feedback
+      document.getElementById('feedbackMsg').textContent = `🔄 Switched to ${btn.textContent}`;
+      document.getElementById('feedbackAngle').textContent = 'Angle: —';
+    });
+  });
+
+  // ---------- MEDIAPIPE POSE ----------
+  function initializePose() {
+    const pose = new Pose({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
+    });
+    pose.setOptions({
+      modelComplexity: 1,
+      smoothLandmarks: true,
+      enableSegmentation: false,
+      smoothSegmentation: false,
+      minDetectionConfidence: 0.6,
+      minTrackingConfidence: 0.5
+    });
+    pose.onResults(onResults);
+
+    const camera = new Camera(video, {
+      onFrame: async () => {
+        await pose.send({ image: video });
+      },
+      width: 640,
+      height: 480
+    });
+    camera.start();
+  }
+
+  // Polyfill for drawConnectors / drawLandmarks from MediaPipe (if not defined)
+  // They are globally available from the CDN, but we'll define them just in case.
+  if (typeof drawConnectors === 'undefined') {
+    window.drawConnectors = function(ctx, landmarks, connections, style) {
+      // Simple fallback
+    };
+    window.drawLandmarks = function(ctx, landmarks, style) {
+      // Simple fallback
+    };
+  }
+
+  // We need to import the POSE_CONNECTIONS from the library.
+  // It's usually available globally.
+  const POSE_CONNECTIONS = [
+    [11,12],[11,13],[13,15],[12,14],[14,16],
+    [11,23],[12,24],[23,24],[23,25],[24,26],
+    [25,27],[26,28],[27,29],[28,30],[29,31],[30,32],
+    [11,23],[12,24],[23,25],[24,26],
+    [13,15],[14,16],
+    [15,17],[16,18],[17,19],[18,20],[19,21],[20,22],
+    [15,19],[16,20],[17,21],[18,22]
+  ];
+
+  // ---------- START ----------
+  if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+    initializePose();
+  } else {
+    document.getElementById('feedbackMsg').textContent = '❌ Camera not available';
+  }
+</script>
+</body>
+  </html>
